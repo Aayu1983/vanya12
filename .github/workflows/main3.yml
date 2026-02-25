@@ -1,8 +1,17 @@
-name: Terraform Azure Windows Pipeline
+name: Terraform Azure Multi-Env Pipeline
 
 on:
   workflow_dispatch:
     inputs:
+      target_env:
+        description: "Select Environment"
+        required: true
+        type: choice
+        options:
+          - dev
+          - uat
+          - dr
+          - prod
       working_directory:
         description: "Terraform folder path"
         required: true
@@ -13,22 +22,21 @@ permissions:
   contents: read
 
 jobs:
-  
   terraform_plan:
-    name: "Terraform Plan"
+    name: "Plan - ${{ github.event.inputs.target_env }}"
     runs-on: [self-hosted, Windows]
-    environment: dev
-    env:
+    environment: ${{ github.event.inputs.target_env }}
+    env:    
       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
       ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
       ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+      TF_VAR_resource_group_name: ${{ vars.RESOURCE_GROUP_NAME }}
       TF_IN_AUTOMATION: true
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
 
       - name: Terraform Init
         run: terraform init
@@ -41,25 +49,15 @@ jobs:
       - name: Upload Plan File
         uses: actions/upload-artifact@v4
         with:
-          name: tf-plan-artifact
+          # Unique name for artifact per environment
+          name: tf-plan-${{ github.event.inputs.target_env }}
           path: ${{ github.workspace }}\tfplan
 
- 
-  manual_approval:
-    name: "Waiting for Approval"
-    needs: terraform_plan
-    runs-on: ubuntu-latest
-    environment: dev 
-    steps:
-      - name: Approved
-        run: echo "Plan approved by user. Starting Apply..."
-
- 
   terraform_apply:
-    name: "Terraform Apply"
-    needs: manual_approval
+    name: "Apply - ${{ github.event.inputs.target_env }}"
+    needs: terraform_plan
     runs-on: [self-hosted, Windows]
-    environment: dev
+    environment: ${{ github.event.inputs.target_env }}
     env:
       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
       ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
@@ -73,13 +71,16 @@ jobs:
       - name: Download Plan File
         uses: actions/download-artifact@v4
         with:
-          name: tf-plan-artifact
+          name: tf-plan-${{ github.event.inputs.target_env }}
           path: ${{ github.workspace }}
 
       - name: Terraform Init
         run: terraform init
         working-directory: ${{ github.event.inputs.working_directory }}
 
+      - name: Terraform Apply
+        run: terraform apply -auto-approve "${{ github.workspace }}\tfplan"
+        working-directory: ${{ github.event.inputs.working_directory }}
       - name: Terraform Apply
         run: terraform apply -auto-approve "${{ github.workspace }}\tfplan"
         working-directory: ${{ github.event.inputs.working_directory }}
