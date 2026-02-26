@@ -1,4 +1,4 @@
-name: Terraform Azure Multi-Env Pipeline
+name: Infra Pipeline for Multi-Env 
 
 on:
   workflow_dispatch:
